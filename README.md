@@ -3,7 +3,7 @@
 **Or run locally** as follows:  
 
 ## Overview  
-This shinyR app integrates **adverse reaction data** in ASCII format from the **FAERS** database, covering **2014Q3 to 2024Q3**. The dataset specifically filters reports submitted by four types of healthcare professionals:  
+This shinyR app integrates **adverse reaction data** in ASCII format from the **FAERS** database, covering **2014Q3 to 2024Q4**. The dataset specifically filters reports submitted by four types of healthcare professionals:  
 - **HP** (Health Professional)  
 - **MD** (Physician)  
 - **OT** (Other Health Professional)  
@@ -34,6 +34,26 @@ For **accurate analysis of drug-induced adverse reactions**, special care should
 
 ---
 
+## ✨ New Features
+
+### 🔁 Multi-Drug Adverse Reaction Comparison
+
+Compare the **adverse reaction profiles of up to 8 drugs simultaneously**. This feature helps you:
+
+- Identify **common adverse events** shared by multiple drugs.
+- Discover **distinctive reactions** unique to a single drug.
+- Visually assess overlapping and divergent safety signals.
+
+### 🤖 AI-Powered Interpretation Module
+
+Leverage our **AI engine** to automatically analyze and interpret the relationships between drugs and their reported adverse reactions:
+
+- Provides **natural language explanations** of key safety signals.
+- Helps uncover **potential causal links** between drugs and adverse events.
+- Assists in understanding **clinical relevance** and regulatory impact.
+
+---
+
 ## **Getting Started**
 
 1. **Download Required Data File**
@@ -56,6 +76,12 @@ To use this Shiny app, download the required dataset and place it in the **`WWW\
    library(DT)
 
 3. **Run app.R**
+
+---
+
+## 📌 Disclaimer
+
+This tool is for **research and educational purposes only**. It does not replace professional medical judgment or regulatory assessment.
 
 ---
 
