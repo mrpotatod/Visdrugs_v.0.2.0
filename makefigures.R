@@ -1,19 +1,4 @@
 ###input drug name------------
-library(dplyr)
-library(stringr)
-library(parallel)
-library(epitools)
-library(forestploter)
-library(ggplot2)
-library(grid)
-library(ggrepel)
-library(viridis)
-library(EBImage)
-library(httr)
-library(jsonlite)
-
-
-
 
 load("WWW/data/F_COREDATA_1PS_PROF_STU.RData")
 reacount<-allreac_prof$pt%>%table()%>%data.frame()
@@ -29,26 +14,54 @@ calrepyear<-function(years=NULL){
   demos_prof[,c(1,12)]
 }
 
-
 #extract all cases according to drugs func.1------------------------
-finddrugreacs<-function(drugs=NULL,year=NULL){
+finddrugreacs<-function(drugs=NULL,year=NULL, maxage="",minage="",ageunit="1",gender="Both"){
+  agemagnitude<-list(Year=1/360,Day=1,Hour=24)
+  allreac_prof2<-allreac_prof
+  if(maxage!=""&minage==""){
+    maxage<-as.numeric(maxage)
+    allreac_prof2<-allreac_prof[!is.na(allreac_prof$age_day),]
+    allreac_prof2<-allreac_prof2[round(agemagnitude[[as.numeric(ageunit)]]*allreac_prof2$age_day)<=maxage,]
+  }
+  if(maxage==""&minage!=""){
+    minage<-as.numeric(minage)
+    allreac_prof2<-allreac_prof[!is.na(allreac_prof$age_day),]
+    allreac_prof2<-allreac_prof2[round(agemagnitude[[as.numeric(ageunit)]]*allreac_prof2$age_day)>=minage,]
+  }
+  if(maxage!=""&minage!=""){
+    maxage<-as.numeric(maxage)
+    minage<-as.numeric(minage)
+    allreac_prof2<-allreac_prof[!is.na(allreac_prof$age_day),]
+    allreac_prof2<-allreac_prof2[round(agemagnitude[[as.numeric(ageunit)]]*allreac_prof2$age_day)>=minage & round(agemagnitude[[as.numeric(ageunit)]]*allreac_prof2$age_day)<=maxage,]
+  }
+  
+  if(gender=="Female"){
+    allreac_prof2<-allreac_prof2[!is.na(allreac_prof$sex),]
+    allreac_prof2<-allreac_prof2[allreac_prof2$sex=="F",]
+  }
+  
+  if(gender=="Male"){
+    allreac_prof2<-allreac_prof2[!is.na(allreac_prof$sex),]
+    allreac_prof2<-allreac_prof2[allreac_prof2$sex=="M",]
+  }
+  
   if(is.null(drugs)){stop("Please select drug for treatment group")}
   targetdrugdata<-indexdata_prof[indexdata_prof$prod_ai%in%drugs,]
   dfrepyear<-calrepyear(year)
   targetdrugdata<-targetdrugdata[targetdrugdata$primaryid%in%dfrepyear$primaryid,]
   #target drug's all effect and non target drug's all effect
-  tdalle<-allreac_prof[allreac_prof$primaryid%in%targetdrugdata$primaryid,]
-  ntdalle<-allreac_prof[!allreac_prof$primaryid%in%targetdrugdata$primaryid,]
+  tdalle<-allreac_prof2[allreac_prof2$primaryid%in%targetdrugdata$primaryid,]
+  ntdalle<-allreac_prof2[!allreac_prof2$primaryid%in%targetdrugdata$primaryid,]
   tdallindi<-allindi_prof[allindi_prof$primaryid%in%targetdrugdata$primaryid,]
   return(list(tdalle=tdalle,ntdalle=ntdalle,tdallindi=tdallindi))
 }
 
 #extract all cases according to drugs func.2------------------------
-extractcases<-function(d1=drugs1,d2="OTHER DRUGS",year=NULL){
+extractcases<-function(d1=drugs1,d2="OTHER DRUGS",year=NULL,maxage="",minage="",ageunit=NULL,gender=NULL){
 
   if(is.null(d1)){stop("Please select drug for treatment group")}
 
-  tdalle_ntdalle<-finddrugreacs(drugs=d1,year=year)
+  tdalle_ntdalle<-finddrugreacs(drugs=d1,year=year,maxage=maxage,minage=minage,ageunit=ageunit,gender=gender)
   d1alle<-tdalle_ntdalle$tdalle
   if(d2[1]=="OTHER DRUGS"){d2alle<-tdalle_ntdalle$ntdalle}else{
     d2alle<-finddrugreacs(drugs=d2,year=year)
@@ -117,9 +130,12 @@ calodd<-function(targetreac=NULL,drug1reactions=NULL,drug2reactions=NULL){
     #cal or
     or<-paste(est," (",low," to ",hi,")",sep="")
     #output
-    oddres<-data.frame(Reaction=x,Drug_of_interest=paste(length(td1te)," / ",length(td1nte),sep = ""),Other_Drug=paste(length(td2te)," / ",length(td2nte),sep = ""),low=low,high=hi,est=est,se=se,removethis=" ",ROR=or)
-  })
+    oddres<-data.frame(Reaction=x[1],Drug_of_interest=paste(length(td1te)," / ",length(td1nte),sep = ""),Other_Drug=paste(length(td2te)," / ",length(td2nte),sep = ""),low=low,high=hi,est=est,se=se,removethis=" ",ROR=or)
+    oddres
+    })
+  
   res<-do.call(rbind,res)
+  if(is.list(targetreac)){res$Reaction<-names(targetreac)}
   if(nrow(res)==0){return(NULL)}else{
   colnames(res)[8]<-"                                       "
   res}
@@ -225,20 +241,7 @@ tdte2pie<-function(tdte=NULL,druggroupname=NULL,USRID=NULL){
   # 添加标签
   df2$Label <- paste0(round(df2$Percentage, 1), "%")
   df2$Frequency<-as.character(df2$Frequency)
-  # # 绘制饼图
-  # p<-ggplot(df2, aes(x = "", y = Percentage, fill = Reaction)) +
-  #   geom_bar(width = 1, stat = "identity") +
-  #   coord_polar(theta = "y") +
-  #   theme_void() +  # 移除背景和坐标轴
-  #   theme(legend.position = "right",
-  #         plot.title = element_text(hjust = 0.5)) +
-  #   labs(title = paste("Reaction Distribution of",druggroupname)) +
-  #   scale_fill_viridis_d(begin = 0.15,end = 0.85,option = "H")  # 设置颜色主题
-  #
-  #   ggsave(filename=paste("WWW/temp/",USRID,"_pie.png",sep=""), plot = p, width =  2600, height = 1600, units = "px", dpi = 300)
-  #
-  # resize_image(input_path=paste("WWW/temp/",USRID,"_pie.png",sep=""),output_path=paste("WWW/temp/",USRID,"_pie2.png",sep=""), fixed_width =1000)
-  #
+
   return(list(df=df,df2=df2))
 
   }

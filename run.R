@@ -1,17 +1,15 @@
 #################################################################
 #                          功能汇总代码                         #
 #################################################################
-library(stringr)
-library(dplyr)
+
 #-----------------------------------
 
-# fdapieplot(drugs1="ETANERCEPT",druggroupname1="ETANERCEPT",year=2014:2024,targetreac=c("Death","abortion"),topn=15,minpub=3,odbyror=FALSE,removeindi=FALSE,USRID=NULL)
 
 #show most potential reactions-----------------
-fdapieplot<-function(drugs1=NULL,druggroupname1=NULL,year=NULL,targetreac=NULL,topn=15,minpub=3,odbyror=FALSE,removeindi=FALSE,USRID=NULL){
+fdapieplot<-function(drugs1=NULL,druggroupname1=NULL,year=NULL,targetreac=NULL,topn=15,minpub=3,odbyror=FALSE,removeindi=FALSE,USRID=NULL,maxage="",minage="",ageunit="Year",gender="Both"){
   if(druggroupname1==""){druggroupname1=drugs1[1]%>%str_to_sentence}
   USRID_mpt<-paste(USRID,"_mpt",sep = "")
-  drugreaction_1drug<-extractcases(d1=drugs1,d2="OTHER DRUGS",year=year)
+  drugreaction_1drug<-extractcases(d1=drugs1,d2="OTHER DRUGS",year=year,maxage=maxage,minage=minage,ageunit=ageunit,gender=gender)
   groupres<-groupbynon(drugreaction=drugreaction_1drug)
   drug1pie<-tdte2pie(tdte=drugreaction_1drug$d1alle[,c(1,3)]%>%unique(),druggroupname=druggroupname1,USRID=USRID)
   drug1pie$df$same_as_indi<-"No"
@@ -88,19 +86,13 @@ fdapieplot<-function(drugs1=NULL,druggroupname1=NULL,year=NULL,targetreac=NULL,t
   }
 
 
-
-# drugs1="LAMIVUDINE"
-# drugs2="OTHER DRUGS"
-# druggroupname1="test"
-# # x<-drugreaction_1drug$d1alle
-# USRID="ASDASD"
-# targetreac="Death"
-
 # draw forest plot for drug vs drug reactions-----------------
-ffplot_dvd<-function(drugs1=NULL,drugs2=NULL,year=NULL,USRID=NULL,druggroupname1=NULL,druggroupname2=NULL,targetreac=NULL,subgroup=NULL,age_unit=NULL,age=NULL){
+ffplot_dvd<-function(drugs1=NULL,drugs2=NULL,year=NULL,USRID=NULL,druggroupname1=NULL,druggroupname2=NULL,targetreac=NULL,subgroup=NULL,age_unit=NULL,age=NULL,maxage="",minage="",ageunit="Year",gender="Both"){
+  if(!is.list(targetreac)){
   targetreac=targetreac%>%str_to_sentence()
+  }else{targetreac=lapply(targetreac,str_to_sentence)}
   USRID_dvd<-paste(USRID,"_dvd",sep = "")
-  drugreaction_1drug<-extractcases(d1=drugs1,d2=drugs2,year=year)
+  drugreaction_1drug<-extractcases(d1=drugs1,d2=drugs2,year=year,maxage=maxage,minage=minage,ageunit=ageunit,gender=gender)
   if (subgroup=="age"){
   groupres<-groupbyage(drugreaction=drugreaction_1drug,age_unit=age_unit,age=age)
   dfall<-combagegroupres(groupres=groupres,targetreac=targetreac,age=age)
@@ -121,10 +113,12 @@ ffplot_dvd<-function(drugs1=NULL,drugs2=NULL,year=NULL,USRID=NULL,druggroupname1
   drugreaction_1drug$d1alle
 }
 
+
+
 #Multiple compare-----------------
-fdapieplot_hdv<-function(drugs1=NULL,druggroupname1=NULL,reacount=reacount,reactotal=reactotal,removeindi=FALSE,year=NULL,odbyror=FALSE,targetreac=NULL,USRID=NULL){
+fdapieplot_hdv<-function(drugs1=NULL,druggroupname1=NULL,reacount=reacount,reactotal=reactotal,removeindi=FALSE,year=NULL,odbyror=FALSE,targetreac=NULL,USRID=NULL,maxage="",minage="",ageunit="Year",gender="Both"){
   USRID_mpt<-paste(USRID,"_mpt",sep = "")
-  drugreaction_1drug<-extractcases(d1=drugs1,d2="OTHER DRUGS",year=year)
+  drugreaction_1drug<-extractcases(d1=drugs1,d2="OTHER DRUGS",year=year,maxage=maxage,minage=minage,ageunit=ageunit,gender=gender)
   drug1pie<-tdte2pie(tdte=drugreaction_1drug$d1alle[,c(1,3)]%>%unique(),druggroupname=druggroupname1,USRID=USRID)
   if(removeindi==TRUE){
     drug1pie$df<-drug1pie$df[!as.character(tolower(drug1pie$df$Reaction))%in%(drugreaction_1drug$tdallindi$indi_pt%>%table()%>%names()),]
@@ -132,22 +126,69 @@ fdapieplot_hdv<-function(drugs1=NULL,druggroupname1=NULL,reacount=reacount,react
     drug1pie$df$Reaction[as.character(tolower(drug1pie$df$Reaction))%in%(drugreaction_1drug$tdallindi$indi_pt%>%table()%>%names())]%>%as.character(drug1pie$df$Reaction)
   }
   if(!is.null(targetreac)){
-    targetreac=targetreac%>%str_to_sentence()
+    if(!is.list(targetreac)){
+      targetreac=targetreac%>%str_to_sentence()
+      drug1pie$df<-drug1pie$df[match(targetreac,drug1pie$df$Reaction),]
+      drug1pie$df$Reaction<-targetreac
+      drug1pie$df$Frequency[is.na(drug1pie$df$Frequency)]<-0
+      
+      drug1pie$df<-drug1pie$df[drug1pie$df$Reaction%in%targetreac,]
+      drug1pie$df$groupname<-druggroupname1
+      
+      df<-drug1pie$df
+      df$tdtr<-df$Frequency%>%as.numeric()
+      df$tdntr<-nrow(drugreaction_1drug$d1alle)-df$tdtr
+      df$ntdtr<-reacount$Count[match(df$Reaction,reacount$Reaction)]%>%as.numeric()-df$tdtr
+      df$ntdntr<-nrow(drugreaction_1drug$d2alle)-df$ntdtr
+      df$Reaction<-as.character(df$Reaction)
+    }else{
+      targetreac=lapply(targetreac,str_to_sentence)
+      alldf<-lapply(targetreac,function(x) {
+         y<-drug1pie$df[match(x,drug1pie$df$Reaction),]
+         y$Reaction<-x
+         y$Frequency[is.na(y$Frequency)]<-0
+         
+         y$groupname<-druggroupname1
+         df<-y
+         df$tdtr<-df$Frequency%>%as.numeric()
+         df$tdntr<-nrow(drugreaction_1drug$d1alle)-df$tdtr
+         df$ntdtr<-reacount$Count[match(df$Reaction,reacount$Reaction)]%>%as.numeric()-df$tdtr
+         df$ntdntr<-nrow(drugreaction_1drug$d2alle)-df$ntdtr
+         df$Reaction<-as.character(df$Reaction)
+         z<-df[1,]
+         z$Frequency<-sum(df$Frequency)
+         z$tdtr<-sum(df$tdtr)
+         z$tdntr<-df$tdtr[1]+df$tdntr[1]-z$tdtr
+         z$ntdtr<-sum(df$ntdtr)
+         z$ntdntr<-df$ntdtr[1]+df$ntdntr[1]-z$ntdtr
+         z
+         })
+      alldf<-do.call(rbind,alldf)
+      alldf$Reaction<-names(targetreac)
+      df<-alldf
+      }
+  }else{
+    targetreac=indexpt_prof
+    drug1pie$df<-drug1pie$df[match(targetreac,drug1pie$df$Reaction),]
+    drug1pie$df$Reaction<-targetreac
+    drug1pie$df$Frequency[is.na(drug1pie$df$Frequency)]<-0
+    
     drug1pie$df<-drug1pie$df[drug1pie$df$Reaction%in%targetreac,]
+    drug1pie$df$groupname<-druggroupname1
+    
+    df<-drug1pie$df
+    df$tdtr<-df$Frequency%>%as.numeric()
+    df$tdntr<-nrow(drugreaction_1drug$d1alle)-df$tdtr
+    df$ntdtr<-reacount$Count[match(df$Reaction,reacount$Reaction)]%>%as.numeric()-df$tdtr
+    df$ntdntr<-nrow(drugreaction_1drug$d2alle)-df$ntdtr
+    df$Reaction<-as.character(df$Reaction)
   }
+  
   if(nrow(drug1pie$df)==0){
     stop("Please select reaction available for selected drugs")
     targetreac<-drug1pie$df$Reaction
   }
-  drug1pie$df$groupname<-druggroupname1
-  df<-drug1pie$df
-  df$tdtr<-df$Frequency%>%as.numeric()
-  df$tdntr<-nrow(drugreaction_1drug$d1alle)-df$tdtr
-  df$ntdtr<-reacount$Count[match(df$Reaction,reacount$Reaction)]%>%as.numeric()-df$tdtr
-  df$ntdntr<-nrow(drugreaction_1drug$d2alle)-df$ntdtr
-  
-  df$Reaction<-as.character(df$Reaction)
-  
+
   df2 <- df %>%
     rowwise() %>%
     mutate(
@@ -157,7 +198,9 @@ fdapieplot_hdv<-function(drugs1=NULL,druggroupname1=NULL,reacount=reacount,react
       se = calculate_ROR_with_CI(a=tdtr, b=tdntr, c=ntdtr, d=ntdntr)$se
     ) %>%
     ungroup()
-  if(odbyror){df2<-df2[order(df2$est,decreasing = TRUE),]}
-  
+  if(odbyror){df2<-df2[order(df2$est,decreasing = TRUE),]}else{df2<-df2[order(df2$Frequency,decreasing = TRUE),]}
+  if(is.list(targetreac)){df2$Reactions<-sapply(targetreac,function(x) paste0(x,collapse = ", "))
+  }
   return(df2)
 }
+

@@ -12,25 +12,33 @@ library(visNetwork)
 library(future)
 library(promises)
 library(shinyalert)
+library(ggVennDiagram)
+library(jsonlite)
+library(reticulate)
+library(ComplexUpset)
+library(ggplot2)
+library(dplyr)
+library(parallel)
+library(epitools)
+library(forestploter)
+library(grid)
+library(ggrepel)
+library(viridis)
+library(EBImage)
+library(httr)
+library(writexl)
+# install.packages("writexl")
 
-# install.packages("UpSetR")
-# library(random)
 source("makefigures.R")
 source("run.R")
 source("reqfreegpt.R")
-source("reqds.R")
 source("calvenn.R")
 source("reqncbi.R")
 source("visdrugsupset.R")
+message(py_config())
+message(Sys.getenv("RETICULATE_PYTHON"))
+message(file.path(getwd()))
 
-# "Eczema herpeticum"
-# "Upadacitinib" "Abrocitinib"
-# library(dplyr)
-# ids<-indexdata_prof$primaryid[indexdata_prof$prod_ai==toupper("Upadacitinib")]
-# idss<-allindi_prof$indi_pt[allindi_prof$primaryid%in%ids]%>%table()%>%as.data.frame()
-
-# install.packages("shinycssloaders",dependencies = T)
-# install.packages("shinyalert")
 # Define UI ----
 my_theme <- bs_theme(bootswatch="cerulean")
 # 定义 UI
@@ -166,6 +174,7 @@ ui <- fluidPage(
                             width = "1200px"
                           ),
                       ),
+              
                       div(style = "display: flex; align-items: center;",#add red *
                           tags$span(style ="color: white; margin-right: 5px;", "*"),
  
@@ -177,6 +186,42 @@ ui <- fluidPage(
                                  "中文版使用说明请点这里",
                                  target = "_blank",style="margin-top: 10px;")
                       ),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          radioButtons(
+                            inputId = "gender1",
+                            label = "Which gender's data to focus?",
+                            choices = list("Both" = "Both", "Male" = "Male", "Female" = "Female"),
+                            selected = "Both",
+                            inline = T
+                          )),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          textInput(
+                            inputId = "minage1",
+                            label = "Cases with equals or higher age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                          tags$span(style = "margin-right: 20px;"),
+                          textInput(
+                            inputId = "maxage1",
+                            label = "Cases with equals or lower age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                      ),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          radioButtons(
+                            inputId = "ageunit1",
+                            label = "Select age unit to filter data:",
+                            choices = list("Year" = "1", "Day" = "2", "Hour" = "3"),
+                            selected = "1",
+                            inline = T
+                          )),
                       div(style = "display: flex; align-items: center;",#add red *
                           tags$span(style ="color: white; margin-right: 5px;", "*"),
                           numericInput(inputId = "minpub1",label="Reports number for a ADE should exceed? (default≥1)",1,min = 1,max = 999999,width = "590px"),
@@ -337,20 +382,97 @@ ui <- fluidPage(
                             width = "1200px"
                           )
                           ),
+                      # 当前组数 (隐藏 numericInput 也可以用 reactiveValues)
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          numericInput("group_count", label = "Set ADEs Categories for Analysis", value = 0, min = 0, max = 10)
+                      ),
+                      # conditionalPanel 每一组
+                      lapply(1:10, function(i) {
+                        conditionalPanel(
+                          condition = paste0("input.group_count >= ", i),
+                          column(12,
+                                 div(style = "display: flex; align-items: center;",#add red *
+                                     tags$span(style ="color: red; margin-right: 5px;", "*"),
+                                     textInput(
+                                       inputId = paste0("group2_", i, "_1"),
+                                       label = paste0("Name of Reaction Category ", i),
+                                       placeholder = 'Start typing...',
+                                     ),
+                                     tags$span(style = "margin-right: 20px;"),tags$span(style ="color: red; margin-right: 5px;", "*"),
+                                     selectizeInput(
+                                       inputId = paste0("group2_", i, "_2"),
+                                       label = paste0("PTs in Category ", i),
+                                       choices = NULL,
+                                       selected = NULL,
+                                       multiple = TRUE,
+                                       options = list(
+                                         placeholder = 'Start typing...',
+                                         maxOptions = 50,
+                                         create = TRUE,
+                                         delimiter = ","
+                                       ),
+                                       width = "1200px",
+                                     )
+                                 )
+                          )
+                        )
+                      }),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          radioButtons(
+                            inputId = "gender",
+                            label = "Which gender's data to focus?",
+                            choices = list("Both" = "Both", "Male" = "Male", "Female" = "Female"),
+                            selected = "Both",
+                            inline = T
+                          )),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          textInput(
+                            inputId = "minage",
+                            label = "Cases with equals or higher age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                          tags$span(style = "margin-right: 20px;"),
+                          textInput(
+                            inputId = "maxage",
+                            label = "Cases with equals or lower age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                          ),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                        radioButtons(
+                          inputId = "ageunit",
+                          label = "Select age unit to filter data:",
+                          choices = list("Year" = "1", "Day" = "2", "Hour" = "3"),
+                          selected = "1",
+                          inline = T
+                      )),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
                       radioButtons(
                         inputId = "subgroup",
                         label = "Whether use subgroup?",
                         choices = list("By Age" = "age", "By Gender" = "gender", "No" = "no"),
-                        selected = "no"
-                      ),
+                        selected = "no",
+                        inline = T
+                      )),
                       conditionalPanel(
                         condition = "input.subgroup == 'age'",
+                        div(style = "display: flex; align-items: center;",#add red *
+                            tags$span(style ="color: white; margin-right: 5px;", "*"),
                         radioButtons(
                           inputId = "age_unit",
-                          label = "Select age unit:",
+                          label = "Select age unit to perform subgroup analysis:",
                           choices = list("Year" = "year", "Day" = "day", "Hour" = "hour"),
                           selected = NULL
-                        )
+                        ))
                       ),
                       conditionalPanel(
                         condition = "input.subgroup == 'age' && input.age_unit != null",
@@ -375,7 +497,6 @@ ui <- fluidPage(
                       actionButton("submit2", "Submit"),
                       downloadButton("DL_dvd_forest_plot","Download Forest Plot"),
                       downloadButton("DL_dvd_forest_data","Download Forest Data"),
-                      # downloadButton("DL_dvd_areac_data","Download Target Drugs' All Reaction Data"),
                       div(br())
                ),
                sidebarLayout(
@@ -580,17 +701,88 @@ ui <- fluidPage(
                             ),
                             width = "1205px"
                           )),
+                      # 当前组数 (隐藏 numericInput 也可以用 reactiveValues)
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          numericInput("group_count3", label = "Set ADEs Categories for Analysis", value = 0, min = 0, max = 10)
+                      ),
+                      # conditionalPanel 每一组
+                      lapply(1:10, function(i) {
+                        conditionalPanel(
+                          condition = paste0("input.group_count3 >= ", i),
+                          column(12,
+                                 div(style = "display: flex; align-items: center;",#add red *
+                                     tags$span(style ="color: red; margin-right: 5px;", "*"),
+                                     textInput(
+                                       inputId = paste0("group3_", i, "_1"),
+                                       label = paste0("Name of Reaction Category ", i),
+                                       placeholder = 'Start typing...',
+                                     ),
+                                     tags$span(style = "margin-right: 20px;"),tags$span(style ="color: red; margin-right: 5px;", "*"),
+                                     selectizeInput(
+                                       inputId = paste0("group3_", i, "_2"),
+                                       label = paste0("PTs in Category ", i),
+                                       choices = NULL,
+                                       selected = NULL,
+                                       multiple = TRUE,
+                                       options = list(
+                                         placeholder = 'Start typing...',
+                                         maxOptions = 50,
+                                         create = TRUE,
+                                         delimiter = ","
+                                       ),
+                                       width = "1200px",
+                                     )
+                                 )
+                          )
+                        )
+                      }),
                           div(style = "display: flex; align-items: center;",#add red *
                               tags$span(style ="color: white; margin-right: 5px;", "*"),
                               numericInput(inputId = "minpub3",label="Reports for one ADR (Default≥1)",1,min = 0,max = 99999999,width = "290px"),
                               tags$span(style = "margin-right: 20px;"),
-                              numericInput(inputId = "est",label="ROR should exceed (Default>1)",1,min=0,max=99999999,width = "290px"),
+                              numericInput(inputId = "est",label="ROR should exceed (Default>1)",0,min=-Inf,max=Inf,width = "290px"),
                               tags$span(style = "margin-right: 20px;"),
-                              numericInput(inputId = "low",label=" 95% CI lower limit (Default>1)",1,min=0,max=99999999,width = "290px"),
+                              numericInput(inputId = "low",label=" 95% CI lower limit (Default>1)",0,min=-Inf,max=Inf,width = "290px"),
                               tags$span(style = "margin-right: 20px;"),
                               numericInput(inputId = "maxadr3",label="Top ADRs to show (Default≤20)",20,min=1,max=50,width = "275px")
                               ),
-
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          radioButtons(
+                            inputId = "gender3",
+                            label = "Which gender's data to focus?",
+                            choices = list("Both" = "Both", "Male" = "Male", "Female" = "Female"),
+                            selected = "Both",
+                            inline = T
+                          )),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          textInput(
+                            inputId = "minage3",
+                            label = "Cases with equals or higher age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                          tags$span(style = "margin-right: 20px;"),
+                          textInput(
+                            inputId = "maxage3",
+                            label = "Cases with equals or lower age will be evaluated:",
+                            value = "",
+                            placeholder = "Leave both empty to analysis with all cases",
+                            width = "800px"
+                          ),
+                      ),
+                      div(style = "display: flex; align-items: center;",#add red *
+                          tags$span(style ="color: white; margin-right: 5px;", "*"),
+                          radioButtons(
+                            inputId = "ageunit3",
+                            label = "Select age unit to filter data:",
+                            choices = list("Year" = "1", "Day" = "2", "Hour" = "3"),
+                            selected = "1",
+                            inline = T
+                          )),
                       div(style = "display: flex; align-items: center;",#add red *
                           tags$span(style ="color: white; margin-right: 5px;", "*"),
                           radioButtons(
@@ -629,9 +821,12 @@ ui <- fluidPage(
                    div(tags$span(style = "margin-right: 5px;"), 
                        actionButton("submit3", "Submit"),
                        tags$span(style = "margin-right: 5px;"),
-                       downloadButton("downloadvenn_data",label = "Download Data"),
+                       downloadButton("downloadforest3_data",label = "Download Forest data"),
                        tags$span(style = "margin-right: 5px;"),
-                       downloadButton("downloadupset_plot",label = "Download Upset Plot")),
+                       downloadButton("downloadvenn_data",label = "Download Venn Data"),
+                       tags$span(style = "margin-right: 5px;"),
+                       downloadButton("downloadupset_plot",label = "Download Upset Plot")
+                       ),
       
                    div(br()),
                    div(tags$span(style = "margin-right: 15px;"), 
@@ -707,8 +902,14 @@ ui <- fluidPage(
 
 # Define server logic ----
 server <- function(input, output,session) {
+  # 监听 + 按钮
+  observe({
+    toggle("targetreac2_1", condition = input$group_count == 0)
+  })
   
-  
+  observe({
+    toggle("targetreac3_1", condition = input$group_count3 == 0)
+  })
   
   # 数据加载完成后，隐藏加载遮罩层并显示主内容------------------
   # 模拟数据预加载并更新进度条
@@ -730,9 +931,6 @@ server <- function(input, output,session) {
   USRID<-stri_rand_strings(1, 10, pattern = "[A-Za-z0-9]")
   #1st server--------------------------------
   
-  # output$select_drugs <- renderText({
-  #   paste("Most Potential Reactions for", input$druggroupname1)
-  # })
   #按按钮才进行计算
   
   # 初始化选中的年份（反应式值）
@@ -780,6 +978,8 @@ server <- function(input, output,session) {
     }
     calrepyear(years) # 使用自定义函数生成数据
   })
+  
+  tgs<-finddrugreacs(drugs="LAMIVUDINE",year=2014:2024)
   
   filtered_data_tg <- eventReactive(input$submit1, {
     if(is.null(input$Drugs_mpt1_1)){shinyalert("Please check parameters", "Some parameters may be missing, or no ADEs under the current settings", type = "error")
@@ -864,8 +1064,9 @@ server <- function(input, output,session) {
       year <-2014:2024 # 未选择年份时，显示所有数据
     }
     res_reactive_sh_pie<-try(
-    fdapieplot(drugs1=input$Drugs_mpt1_1,druggroupname1=input$druggroupname1_1,targetreac = input$targetreac1_1,topn=input$topn1,odbyror=input$odbyror1,minpub=input$minpub1,removeindi = input$removeindi1,year=year,USRID=USRID)
+    fdapieplot(drugs1=input$Drugs_mpt1_1,druggroupname1=input$druggroupname1_1,targetreac = input$targetreac1_1,topn=input$topn1,odbyror=input$odbyror1,minpub=input$minpub1,removeindi = input$removeindi1,year=year,USRID=USRID,maxage=input$maxage1,minage=input$minage1,ageunit=input$ageunit1,gender=input$gender1)
     )
+    
     if (inherits(res_reactive_sh_pie, "try-error")) {
       return(NULL)
     } else {
@@ -1158,7 +1359,7 @@ server <- function(input, output,session) {
     rname<-reactive_name()
     rsr<-input$selected_reaction
     future({
-      reqgpt(message = paste("Please show the relationship between drugs", related_nodes_str, "and ADR", node_name,"only say what was recorded but not deduced.",
+      reqgpt(message = paste("Please show the relationship between drugs", rname, "and ADR", rsr,"only say what was recorded but not deduced.",
                              "Within 200 words using the following format.
                               drug funtion:
                               Is the ADR related to drug indication:(Yes/No)
@@ -1291,12 +1492,27 @@ server <- function(input, output,session) {
       }
       
       # 调用ffplot_dvd生成数据
+      if(input$group_count==0){
       forest_data <- ffplot_dvd(drugs1 = input$Drugs_dvd1, drugs2 = input$Drugs_dvd2, year = year2, 
                                 USRID = USRID, targetreac = input$targetreac2_1, 
                                 druggroupname1 = input$druggroupname_dvd_1, 
                                 druggroupname2 = input$druggroupname_dvd_2, 
-                                subgroup = input$subgroup, age_unit = input$age_unit, age = input$age_value)
-      
+                                subgroup = input$subgroup, age_unit = input$age_unit, age = input$age_value,
+                                maxage=input$maxage,minage=input$minage,ageunit=input$ageunit,gender=input$gender)
+      }
+      else{
+        tr<-list(input$group2_1_2,input$group2_2_2,input$group2_3_2,input$group2_4_2,input$group2_5_2,input$group2_6_2,input$group2_7_2,input$group2_8_2,input$group2_9_2,input$group2_10_2)
+        tr<-Filter(Negate(is.null), tr)
+        nmtr<-c(input$group2_1_1,input$group2_2_1,input$group2_3_1,input$group2_4_1,input$group2_5_1,input$group2_6_1,input$group2_7_1,input$group2_8_1,input$group2_9_1,input$group2_10_1)
+        nmtr<-nmtr[nmtr != ""]
+        names(tr)<-nmtr
+        forest_data <- ffplot_dvd(drugs1 = input$Drugs_dvd1, drugs2 = input$Drugs_dvd2, year = year2,
+                                  USRID = USRID, targetreac = tr,
+                                  druggroupname1 = input$druggroupname_dvd_1,
+                                  druggroupname2 = input$druggroupname_dvd_2,
+                                  subgroup = input$subgroup, age_unit = input$age_unit, age = input$age_value,
+                                  maxage=input$maxage,minage=input$minage,ageunit=input$ageunit,gender=input$gender)
+      }
       # 设置生成图像路径
       forest_path <- paste("temp/", USRID, "_dvd_forest2.png?", Sys.time(), sep = "")
       
@@ -1367,7 +1583,8 @@ server <- function(input, output,session) {
                   paste0("WWW/temp/",USRID,"_venn.xls"),
                   paste0("WWW/temp/",USRID,"_upset.png"),
                   paste0("WWW/temp/",USRID,"_upset2.png"),
-                  paste0("WWW/temp/",USRID,"_venn_binary_matrix.xls")
+                  paste0("WWW/temp/",USRID,"_venn_binary_matrix.xls"),
+                  paste0("WWW/temp/",USRID,"_forest3.xlsx")
                   )
     lapply(image_path, function(x){
       if (file.exists(x)) {
@@ -1397,6 +1614,14 @@ server <- function(input, output,session) {
     }
   )
   
+  output$downloadforest3_data<-downloadHandler(
+    filename = function() {
+      paste("Forest3", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      file.copy(paste0("WWW/temp/",USRID,"_forest3.xlsx"), file)
+    }
+  )
 
   
   # 初始化选中的年份（反应式值）
@@ -1504,37 +1729,48 @@ server <- function(input, output,session) {
     Drug6=NULL
     Drug7=NULL
     Drug8=NULL
-    try(if(!is.null(input$Drugs_mpt1)){Drug1<-fdapieplot_hdv(drugs1=input$Drugs_mpt1,druggroupname1=ifelse(input$Drugs_nm1=="",input$Drugs_mpt1[1]%>%str_to_sentence(),input$Drugs_nm1),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt2)){Drug2<-fdapieplot_hdv(drugs1=input$Drugs_mpt2,druggroupname1=ifelse(input$Drugs_nm2=="",input$Drugs_mpt2[1]%>%str_to_sentence(),input$Drugs_nm2),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt3)){Drug3<-fdapieplot_hdv(drugs1=input$Drugs_mpt3,druggroupname1=ifelse(input$Drugs_nm3=="",input$Drugs_mpt3[1]%>%str_to_sentence(),input$Drugs_nm3),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt4)){Drug4<-fdapieplot_hdv(drugs1=input$Drugs_mpt4,druggroupname1=ifelse(input$Drugs_nm4=="",input$Drugs_mpt4[1]%>%str_to_sentence(),input$Drugs_nm4),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt5)){Drug5<-fdapieplot_hdv(drugs1=input$Drugs_mpt5,druggroupname1=ifelse(input$Drugs_nm5=="",input$Drugs_mpt5[1]%>%str_to_sentence(),input$Drugs_nm5),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt6)){Drug6<-fdapieplot_hdv(drugs1=input$Drugs_mpt6,druggroupname1=ifelse(input$Drugs_nm6=="",input$Drugs_mpt6[1]%>%str_to_sentence(),input$Drugs_nm6),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt7)){Drug7<-fdapieplot_hdv(drugs1=input$Drugs_mpt7,druggroupname1=ifelse(input$Drugs_nm7=="",input$Drugs_mpt7[1]%>%str_to_sentence(),input$Drugs_nm7),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    try(if(!is.null(input$Drugs_mpt8)){Drug8<-fdapieplot_hdv(drugs1=input$Drugs_mpt8,druggroupname1=ifelse(input$Drugs_nm8=="",input$Drugs_mpt8[1]%>%str_to_sentence(),input$Drugs_nm8),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID)%>%as.data.frame()})
-    # #整理ROR
-    # USRID<-NULL
-    # year<-2020:2024
-    
-    # try(Drug1<-fdapieplot_hdv(drugs1=toupper(c("Ruxolitinib","Ruxolitinib phosphate")),druggroupname1="Ruxolitinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
-    # try(Drug2<-fdapieplot_hdv(drugs1=toupper(c("Tofacitinib","Tofacitinib citrate")),druggroupname1="Tofacitinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
-    # try(Drug3<-fdapieplot_hdv(drugs1=toupper(c("Baricitinib")),druggroupname1="Baricitinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
-    # try(Drug4<-fdapieplot_hdv(drugs1=toupper(c("Upadacitinib","Upadacitinib hemihydrate")),druggroupname1="Upadacitinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
-    # try(Drug5<-fdapieplot_hdv(drugs1=toupper(c("Fedratinib","Fedratinib hydrochloride")),druggroupname1="Fedratinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
-    # try(Drug6<-fdapieplot_hdv(drugs1=toupper(c("Abrocitinib")),druggroupname1="Abrocitinib",reacount=reacount,reactotal=reactotal,year=2014:2024,targetreac=c("Immunodeficiency",	"Immunosuppression"),USRID=NULL)%>%as.data.frame())
+    if(input$group_count3==0){
+    try(if(!is.null(input$Drugs_mpt1)){Drug1<-fdapieplot_hdv(drugs1=input$Drugs_mpt1,druggroupname1=ifelse(input$Drugs_nm1=="",input$Drugs_mpt1[1]%>%str_to_sentence(),input$Drugs_nm1),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt2)){Drug2<-fdapieplot_hdv(drugs1=input$Drugs_mpt2,druggroupname1=ifelse(input$Drugs_nm2=="",input$Drugs_mpt2[1]%>%str_to_sentence(),input$Drugs_nm2),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt3)){Drug3<-fdapieplot_hdv(drugs1=input$Drugs_mpt3,druggroupname1=ifelse(input$Drugs_nm3=="",input$Drugs_mpt3[1]%>%str_to_sentence(),input$Drugs_nm3),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt4)){Drug4<-fdapieplot_hdv(drugs1=input$Drugs_mpt4,druggroupname1=ifelse(input$Drugs_nm4=="",input$Drugs_mpt4[1]%>%str_to_sentence(),input$Drugs_nm4),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt5)){Drug5<-fdapieplot_hdv(drugs1=input$Drugs_mpt5,druggroupname1=ifelse(input$Drugs_nm5=="",input$Drugs_mpt5[1]%>%str_to_sentence(),input$Drugs_nm5),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt6)){Drug6<-fdapieplot_hdv(drugs1=input$Drugs_mpt6,druggroupname1=ifelse(input$Drugs_nm6=="",input$Drugs_mpt6[1]%>%str_to_sentence(),input$Drugs_nm6),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt7)){Drug7<-fdapieplot_hdv(drugs1=input$Drugs_mpt7,druggroupname1=ifelse(input$Drugs_nm7=="",input$Drugs_mpt7[1]%>%str_to_sentence(),input$Drugs_nm7),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt8)){Drug8<-fdapieplot_hdv(drugs1=input$Drugs_mpt8,druggroupname1=ifelse(input$Drugs_nm8=="",input$Drugs_mpt8[1]%>%str_to_sentence(),input$Drugs_nm8),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=input$targetreac3_1,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    }else{
+    tr<-list(input$group3_1_2,input$group3_2_2,input$group3_3_2,input$group3_4_2,input$group3_5_2,input$group3_6_2,input$group3_7_2,input$group3_8_2,input$group3_9_2,input$group3_10_2)
+    tr<-Filter(Negate(is.null), tr)
+    nmtr<-c(input$group3_1_1,input$group3_2_1,input$group3_3_1,input$group3_4_1,input$group3_5_1,input$group3_6_1,input$group3_7_1,input$group3_8_1,input$group3_9_1,input$group3_10_1)
+    nmtr<-nmtr[nmtr != ""]
+    names(tr)<-nmtr
+    try(if(!is.null(input$Drugs_mpt1)){Drug1<-fdapieplot_hdv(drugs1=input$Drugs_mpt1,druggroupname1=ifelse(input$Drugs_nm1=="",input$Drugs_mpt1[1]%>%str_to_sentence(),input$Drugs_nm1),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt2)){Drug2<-fdapieplot_hdv(drugs1=input$Drugs_mpt2,druggroupname1=ifelse(input$Drugs_nm2=="",input$Drugs_mpt2[1]%>%str_to_sentence(),input$Drugs_nm2),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt3)){Drug3<-fdapieplot_hdv(drugs1=input$Drugs_mpt3,druggroupname1=ifelse(input$Drugs_nm3=="",input$Drugs_mpt3[1]%>%str_to_sentence(),input$Drugs_nm3),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt4)){Drug4<-fdapieplot_hdv(drugs1=input$Drugs_mpt4,druggroupname1=ifelse(input$Drugs_nm4=="",input$Drugs_mpt4[1]%>%str_to_sentence(),input$Drugs_nm4),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt5)){Drug5<-fdapieplot_hdv(drugs1=input$Drugs_mpt5,druggroupname1=ifelse(input$Drugs_nm5=="",input$Drugs_mpt5[1]%>%str_to_sentence(),input$Drugs_nm5),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt6)){Drug6<-fdapieplot_hdv(drugs1=input$Drugs_mpt6,druggroupname1=ifelse(input$Drugs_nm6=="",input$Drugs_mpt6[1]%>%str_to_sentence(),input$Drugs_nm6),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt7)){Drug7<-fdapieplot_hdv(drugs1=input$Drugs_mpt7,druggroupname1=ifelse(input$Drugs_nm7=="",input$Drugs_mpt7[1]%>%str_to_sentence(),input$Drugs_nm7),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    try(if(!is.null(input$Drugs_mpt8)){Drug8<-fdapieplot_hdv(drugs1=input$Drugs_mpt8,druggroupname1=ifelse(input$Drugs_nm8=="",input$Drugs_mpt8[1]%>%str_to_sentence(),input$Drugs_nm8),reacount=reacount,reactotal=reactotal,removeindi = input$removeindi3,odbyror=input$odbyror3,year=year,targetreac=tr,USRID=USRID,maxage=input$maxage3,minage=input$minage3,ageunit=input$ageunit3,gender=input$gender3)%>%as.data.frame()})
+    }
 
     # # # # # # #
     print("input OK")
-    # Drug_list<-list(Drug1,Drug2,Drug3,Drug4,Drug5,Drug6,Drug7,NULL)
     Drug_list<-list(Drug1,Drug2,Drug3,Drug4,Drug5,Drug6,Drug7,Drug8)
     Drug_list<-Filter(Negate(is.null), Drug_list)
-    
-    # Drug_list<-process_drug_list(Drug_list=Drug_list,minpub=3,maxadr=20,USRID=123123,seevenn=T)
+    Drug_list2<-Drug_list
+    # 
+    names(Drug_list2)<-sapply(Drug_list2, function(x) x$groupname[1])
+    write_xlsx(Drug_list2,paste("WWW/temp/",USRID,"_forest3.xlsx",sep=""))
     if(length(Drug_list)<2){shinyalert("Please check parameters", "Some parameters may be missing, or no common adverse reactions were found under the current settings", type = "error")
       return(NULL)}
     #处理druglist 同时进行VENN分析
     Drug_list<-process_drug_list(Drug_list=Drug_list,minpub=input$minpub3,maxadr=input$maxadr3,input_est=input$est,input_low=input$low,USRID=USRID,seevenn=input$seevenn)
-    visdrugs_upset(USRID=USRID,ndrug=length(Drug_list))
+    
+
+      try(visdrugs_upset(USRID = USRID, ndrug = length(Drug_list)))
+
+    
         # i=1
     if(nrow(Drug_list[[1]])==0){stop(
       showModal(modalDialog(
@@ -1555,8 +1791,6 @@ server <- function(input, output,session) {
     Drug_all[is.na(Drug_all)]<-0
     Drug_names<-Drug_name_all
     
-    # Drug_names<-c("ADE","LAM")
-    # Drug_names<-c(input$Drugs_nm1,input$Drugs_nm2,input$Drugs_nm3,input$Drugs_nm4,input$Drugs_nm5,input$Drugs_nm6,input$Drugs_nm7,input$Drugs_nm8)
     Drug_names<-Drug_names[Drug_names!=""]
     print(Drug_names)
     colnames(Drug_all)[2:ncol(Drug_all)]<-Drug_names
@@ -1591,11 +1825,13 @@ server <- function(input, output,session) {
   
   
   output$network_plot <- renderVisNetwork({
+    req(input$submit3)
+    tryCatch({
     # 构建节点数据
     nodes <- data.frame(
       id = c(reactive_sh_nw()[[1]]$drug_name, reactive_sh_nw()[[2]]$Reaction),
       label = c(reactive_sh_nw()[[1]]$drug_name, reactive_sh_nw()[[2]]$Reaction),
-      size = c(rep(20, length(reactive_sh_nw()[[1]]$drug_name)), reactive_sh_nw()[[2]]$ADR_size*2.5),  # 药物节点大小固定，ADR节点大小依据ADR_size
+      size = c(rep(14, length(reactive_sh_nw()[[1]]$drug_name)), reactive_sh_nw()[[2]]$ADR_size*3)+1,  # 药物节点大小固定，ADR节点大小依据ADR_size
       color = c(reactive_sh_nw()[[1]]$drug_color, reactive_sh_nw()[[2]]$ADR_color)  # 药物节点颜色为 lightblue，ADR节点颜色根据ADR_color
     )
     print(nodes)
@@ -1604,6 +1840,7 @@ server <- function(input, output,session) {
       from = rep(reactive_sh_nw()[[1]]$drug_name, each = nrow(reactive_sh_nw()[[2]])),
       to = rep(reactive_sh_nw()[[2]]$Reaction, times = nrow(reactive_sh_nw()[[1]])),
       value = lapply(reactive_sh_nw()[[2]][,2:(ncol(reactive_sh_nw()[[2]])-2)],as.numeric)%>%unlist()
+      
     )
     edges$color<-reactive_sh_nw()[[1]]$drug_color[match(edges$from,reactive_sh_nw()[[1]]$drug_name)]
     print(edges$value)
@@ -1611,15 +1848,16 @@ server <- function(input, output,session) {
     # 过滤掉值为0的边
     edges <- edges %>% filter(value > 0)
     # 归一化边的宽度，使最大边宽度适中
-    edges$value<-log2(edges$value)
+    edges$value<-log10(edges$value)
     max_value <- max(edges$value)
     min_value <- min(edges$value)
     edges$normalized_value <- (edges$value - min_value) / (max_value - min_value) * 10 + 1  # 缩放至1到10之间
+
     # 创建visNetwork图形
-    visNetwork(nodes, edges) %>%
+     visNetwork(nodes, edges) %>%
       visNodes(size = "size", color = "color",opacity=1,borderWidth=1.5,font = list(size = 16,strokeWidth=1, color = "black",bold=T , face = "arial")) %>%  # 设置节点的大小和颜色
       visEdges(arrows = 'to',width = "normalized_value", color = list(color ="color", highlight = "#FF6347")) %>%  # 设置边的宽度和颜色
-      visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)), 
+      visOptions(highlightNearest = list(enabled = TRUE, degree = list(from = 1, to = 1)),
                  nodesIdSelection = FALSE,
                  ) %>%  # 开启节点高亮和节点选择功能
       visLayout(randomSeed = 123)%>%
@@ -1633,6 +1871,18 @@ server <- function(input, output,session) {
         var clickedNodeId = properties.nodes[0];
         Shiny.setInputValue('clicked_node', clickedNodeId, {priority: 'event'});
       }")
+    #catch alert
+    }, error = function(e) {
+      # 弹出提示框
+      shinyalert(
+        title = "ADEs seems not exist",
+        text = "Some parameters may be missing, or no ADEs were found for some drug",
+        type = "error"
+      )
+      
+      # 返回空图或 NULL
+      return(NULL)
+    })
   })
 
   output$upset_plot <- renderUI({
@@ -1728,7 +1978,9 @@ server <- function(input, output,session) {
     toggle("chatres_content_3")
   })
   
-  
+  #######################################################################################
+  #                       服务器端更新选项-----------                                   #
+  #######################################################################################
   #服务器端更新选项-----------
   updateSelectizeInput(session, "targetreac1_1", 
                        choices = indexpt_prof,  # 加载所有药物选项
@@ -1744,21 +1996,67 @@ server <- function(input, output,session) {
                        choices = indexdrug_prof,  # 加载所有药物选项
                        server = TRUE)
   
-  observe({
-    req(input$targetreac1_1)
-    
-    # 拆分逗号分隔的输入并去除首尾空格
-    selected_reactions <- unique(trimws(unlist(strsplit(input$targetreac1_1, ","))))
-    
-    # 仅当 `selected_reactions` 与当前选中的不同时才更新，避免循环触发
-    isolate({
-      if (!setequal(selected_reactions, input$targetreac1_1)) {
-        updateSelectizeInput(session, "targetreac1_1", 
-                             selected = selected_reactions, 
-                             server = TRUE)
-      }
-    })
-  })
+  updateSelectizeInput(session, "group2_1_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_2_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_3_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_4_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_5_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_6_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_7_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_8_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_9_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group2_10_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  
+  updateSelectizeInput(session, "group3_1_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_2_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_3_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_4_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_5_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_6_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_7_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_8_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_9_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
+  updateSelectizeInput(session, "group3_10_2", 
+                       choices = indexpt_prof,  # 加载所有药物选项
+                       server = TRUE)
 
   updateSelectizeInput(session, "Drugs_dvd1", 
                        choices = indexdrug_prof,  # 加载所有药物选项
@@ -1768,25 +2066,7 @@ server <- function(input, output,session) {
                        selected = "OTHER DRUGS",# 加载所有药物选项
                        server = TRUE)
   
-  observe({
-    req(input$targetreac2_1)
-    
-    # 拆分逗号分隔的输入并去除首尾空格
-    selected_reactions <- unique(trimws(unlist(strsplit(input$targetreac2_1, ","))))
-    
-    # 仅当 `selected_reactions` 与当前选中的不同时才更新，避免循环触发
-    isolate({
-      if (!setequal(selected_reactions, input$targetreac2_1)) {
-        updateSelectizeInput(session, "targetreac2_1", 
-                             selected = selected_reactions, 
-                             server = TRUE)
-      }
-    })
-  })
-  
-  updateSelectizeInput(session, "targetreac2_1", 
-                       choices = indexpt_prof,# 加载所有药物选项
-                       server = TRUE)
+
   updateSelectizeInput(session, "Drugs_mpt1", 
                        choices = indexdrug_prof,  # 加载所有药物选项
                        server = TRUE)
@@ -1811,19 +2091,27 @@ server <- function(input, output,session) {
   updateSelectizeInput(session, "Drugs_mpt8", 
                        choices = indexdrug_prof,  # 加载所有药物选项
                        server = TRUE)
-  observe({
-    req(input$targetreac3_1)
-    
-    # 拆分逗号分隔的输入并去除首尾空格
-    selected_reactions <- unique(trimws(unlist(strsplit(input$targetreac3_1, ","))))
-    
-    # 仅当 `selected_reactions` 与当前选中的不同时才更新，避免循环触发
-    isolate({
-      if (!setequal(selected_reactions, input$targetreac3_1)) {
-        updateSelectizeInput(session, "targetreac3_1", 
-                             selected = selected_reactions, 
-                             server = TRUE)
-      }
+  
+  
+  # 所有需要处理的输入框ID列表
+  input_ids <- c("targetreac1_1", "targetreac2_1", "targetreac3_1", 
+                 "group2_1_2", "group2_2_2", "group2_3_2", "group2_4_2", "group2_5_2", "group2_6_2", "group2_7_2", "group2_8_2", "group2_9_2", "group2_10_2", 
+                 "group2_1_2", "group3_2_2", "group3_3_2", "group3_4_2", "group3_5_2", "group3_6_2", "group3_7_2", "group3_8_2", "group3_9_2", "group3_10_2")  # 可继续添加其他ID
+  
+  # 批量设置 observe
+  lapply(input_ids, function(id) {
+    observe({
+      req(input[[id]])
+      
+      selected_values <- unique(trimws(unlist(strsplit(input[[id]], ","))))
+      
+      isolate({
+        if (!setequal(selected_values, input[[id]])) {
+          updateSelectizeInput(session, id, 
+                               selected = selected_values, 
+                               server = TRUE)
+        }
+      })
     })
   })
 

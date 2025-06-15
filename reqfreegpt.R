@@ -1,6 +1,7 @@
-library(jsonlite)
-# library(reticulate)
-# use_python("/root/miniconda3/bin/python3", required = TRUE)
+
+
+py_config()
+
 
 reqgpt<-function(message){
   # 设置 API Key（替换为你的 API Key）
@@ -21,12 +22,11 @@ reqgpt<-function(message){
   
   # 调用 Python 文件并传递 JSON 输入
   output <- system2("python", args = "WWW/commu/reqgpt.py", input = json_input, stdout = TRUE)
-  
+  cat(output, sep="\n")
   # 解析 Python 返回的 JSON 响应
   response_data <- fromJSON(output)
   
   # 打印 OpenAI 生成的回答
   response_data$response
 }
-
 

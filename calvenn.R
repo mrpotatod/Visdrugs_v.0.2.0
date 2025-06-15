@@ -1,4 +1,3 @@
-library(ggVennDiagram)
 
 list_to_binary_matrix<-function(mylist=NULL){
 # 1. 拍平成两列（集合名 + 元素）
@@ -14,16 +13,21 @@ return(binary_matrix)
 # 
 # minpub<-0
 # maxadr=20
-# 存入列表
-process_drug_list<-function(Drug_list=Drug_list,minpub=input$minpub3,maxadr=input$maxadr3,input_est=input$est,input_low=input$low,USRID=USRID,seevenn=input$seevenn){
+# input_est=0
+# input_low=0
+# # 存入列表
+# i=1
+process_drug_list<-function(Drug_list=Drug_list,minpub="",maxadr="",input_est=NULL,input_low=NULL,USRID=USRID,seevenn=TRUE){
   if(seevenn==FALSE){
+    c<-vector()
     for (i in 1:length(Drug_list)){
       if(minpub==""){minpub<-3}
-      
-      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$Frequency>=as.numeric(minpub),]
-      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$est>input_est,]
-      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$low>input_low,]
+      c<-c(c,Drug_list[[i]]$groupname[1])
       colnames(Drug_list[[i]])[c(1,8)]<-c("Reaction",Drug_list[[i]]$groupname[1])
+      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$Frequency>=as.numeric(minpub),]
+      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]][8]>input_est,]
+      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$low>input_low,]
+      
       Drug_list[[i]]<-Drug_list[[i]][,c(1,3,8)]
       Drug_list[[i]]<-Drug_list[[i]][order(Drug_list[[i]][,2],decreasing = TRUE),]
     }
@@ -38,7 +42,7 @@ process_drug_list<-function(Drug_list=Drug_list,minpub=input$minpub3,maxadr=inpu
     })
     # 绘制 Venn 图
     venn_data <- lapply(Drug_list, function(x) x$Reaction)
-    names(venn_data)<-sapply(Drug_list, function(x) x$groupname[1])
+    names(venn_data)<-c
     # 计算韦恩分析的交集信息
     venn_processed <- process_data(ggVennDiagram::Venn(venn_data))
     
@@ -50,11 +54,12 @@ process_drug_list<-function(Drug_list=Drug_list,minpub=input$minpub3,maxadr=inpu
     filtered_df_list <- Filter(function(x) nrow(x) > 0, filtered_df_list)
     return(filtered_df_list) 
   }else{
-    
+    c<-vector()
     for (i in 1:length(Drug_list)){
       if(minpub==""){minpub<-3}
+      c<-c(c,Drug_list[[i]]$groupname[1])
       Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$Frequency>=as.numeric(minpub),]
-      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$est>input_est,]
+      Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]][8]>input_est,]
       Drug_list[[i]]<-Drug_list[[i]][Drug_list[[i]]$low>input_low,]
       colnames(Drug_list[[i]])[c(1,8)]<-c("Reaction",Drug_list[[i]]$groupname[1])
       Drug_list[[i]]<-Drug_list[[i]][,c(1,3,8)]
@@ -81,7 +86,7 @@ process_drug_list<-function(Drug_list=Drug_list,minpub=input$minpub3,maxadr=inpu
     
      # 绘制 Venn 图
     venn_data <- lapply(Drug_list, function(x) x$Reaction)
-    names(venn_data)<-sapply(Drug_list, function(x) x$groupname[1])
+    names(venn_data)<-c
     # 计算韦恩分析的交集信息
     venn_processed <- process_data(ggVennDiagram::Venn(venn_data))
 

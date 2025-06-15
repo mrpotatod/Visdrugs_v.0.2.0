@@ -1,9 +1,4 @@
-# install.packages("ComplexUpset")
-library(ComplexUpset)
-library(ggplot2)
 
-# CUSRID=123123 
-# ndrug=2
 visdrugs_upset<-function(USRID=NULL,ndrug=NULL){
 ADR_matrix<-read.table(paste0("WWW/temp/",USRID,"_venn_binary_matrix.xls"),sep = "\t")
 # 示例数据（电影类型）
