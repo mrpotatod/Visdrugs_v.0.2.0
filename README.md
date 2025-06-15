@@ -60,7 +60,7 @@ Leverage our **AI engine** to automatically analyze and interpret the relationsh
 To use this Shiny app, download the required dataset and place it in the **`WWW\data\`** directory:
 
 📂 **File Name**: `F_COREDATA_1PS_PROF_STU.RData`  
-📥 **Download Link**: [Baidu Cloud](https://pan.baidu.com/s/1COxYzw8p151igwhCfDGKkA)  
+📥 **Download Link**: [Baidu Cloud](https://pan.baidu.com/s/1Y7-djdXMcYVsaPoLsvA4yQ?pwd=qzt6)
 🔑 **Access Code**: `qzt6`  
 
 2. **Install required dependencies**:
